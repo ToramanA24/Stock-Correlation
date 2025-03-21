@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Step 1: Fetch Data using yfinance
-def fetch_data(symbol, days=365):
+def fetch_data(symbol, days=5):
     """
     Fetch historical stock data using yfinance.
     :param symbol: Stock ticker symbol (e.g., "AAPL").
@@ -15,7 +15,9 @@ def fetch_data(symbol, days=365):
     start_date = end_date - pd.Timedelta(days=days)
     
     # Fetch data using yfinance
-    data = yf.download(symbol, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+    
+    data = yf.download(symbol, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'),
+                       interval = '60m') # Hourly data?
     
     # Ensure the 'close' column exists and return the DataFrame
     if 'Close' in data.columns:
@@ -28,18 +30,36 @@ def calculate_correlation(index_data, stock_data):
     return combined_data.corr().iloc[0, 1]  # Correlation between the two columns
 
 # Step 3: Find Top 3 Correlated Stocks
-def find_top_correlated_stocks(index_symbol, stock_symbols):
-    index_data = fetch_data(index_symbol)
+def find_top_correlated_stocks(index_symbol, index_symbol2, stock_symbols):
+    # Fetch data for the two indices
+    index_data1 = fetch_data(index_symbol)
+    index_data2 = fetch_data(index_symbol2)
+
+    # Ensure the indices align and calculate the difference
+    combined_index_data = pd.concat([index_data1['close'], index_data2['close']], axis=1, keys=['index1', 'index2']).dropna()
+    combined_index_data.columns = ['index1', 'index2']  # Flatten the column names
+    combined_index_data['difference'] = combined_index_data['index1'] - combined_index_data['index2']
+
+    # Extract the difference column
+    index_data = combined_index_data['difference']
+
+    # Calculate correlations
     correlations = {}
     for stock in stock_symbols:
         stock_data = fetch_data(stock)
-        correlations[stock] = calculate_correlation(index_data['close'], stock_data['close'])
+        combined_data = pd.concat([index_data, stock_data['close']], axis=1).dropna()
+        correlations[stock] = combined_data.corr().iloc[0, 1]  # Correlation between the two columns
+
+    # Find the top 5 correlated stocks
     top_5 = sorted(correlations, key=correlations.get, reverse=True)[:5]
     return [(stock, correlations[stock]) for stock in top_5]
 
 # Main Execution
 if __name__ == "__main__":
     index_symbol = "XU100.IS"  # Example: BIST 100 index ticker on Yahoo Finance
+    index_symbol2 = "XU030.IS" # Example: BIST 30 index ticker on Yahoo Finance
+
+    # List of stock symbols to analyze
     stock_symbols = ["TAVHL.IS",
                      "MGROS.IS",
                      "TURSG.IS",
@@ -114,7 +134,8 @@ if __name__ == "__main__":
                      "IEYHO.IS",
                      "ALTNY.IS",
                      ]  # Replace with your stock symbols
-    top_5_stocks = find_top_correlated_stocks(index_symbol, stock_symbols)
+    
+    top_5_stocks = find_top_correlated_stocks(index_symbol, index_symbol2, stock_symbols)
     print("Top 5 Correlated Stocks:")
     for stock, corr in top_5_stocks:
         print(f"{stock}: {corr:.2f}")
